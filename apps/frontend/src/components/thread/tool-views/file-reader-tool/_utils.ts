@@ -100,8 +100,8 @@ export function extractFileReaderData(
           file_type: output.file_type,
           extraction_method: output.extraction_method,
           size_bytes: output.size_bytes,
-          content_length: output.content_length,
-          truncated: output.truncated,
+          content_length: output.content_length ?? output._original_length,
+          truncated: output.truncated ?? output._truncated,
           content: output.content,
           error: output.error
         }];

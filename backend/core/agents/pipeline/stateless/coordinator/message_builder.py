@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 
 from core.utils.logger import logger
 
+# Max size for tool result in stream (avoid huge SSE payloads that break frontend or proxies)
+MAX_TOOL_RESULT_STREAM_CHARS = 32_000
+
 def _transform_mcp_tool_call(func_name: str, args: Any) -> Tuple[str, Any]:
     if func_name != 'execute_mcp_tool':
         return func_name, args
@@ -267,6 +270,36 @@ class MessageBuilder:
             "created_by_user_id": None
         }
 
+    def _truncate_for_stream(self, raw_output: Any, name: str) -> Any:
+        """Truncate large tool output so stream payload stays small; frontend can show 'truncated'."""
+        if raw_output is None:
+            return None
+        if isinstance(raw_output, str):
+            if len(raw_output) <= MAX_TOOL_RESULT_STREAM_CHARS:
+                return raw_output
+            return raw_output[:MAX_TOOL_RESULT_STREAM_CHARS] + "\n\n... [truncated for stream; full content in workspace]"
+        if isinstance(raw_output, dict):
+            out_str = json.dumps(raw_output)
+            if len(out_str) <= MAX_TOOL_RESULT_STREAM_CHARS:
+                return raw_output
+            # For read_file-style result with "content" key, truncate content
+            if "content" in raw_output and isinstance(raw_output["content"], str):
+                c = raw_output["content"]
+                if len(c) > MAX_TOOL_RESULT_STREAM_CHARS:
+                    truncated = dict(raw_output)
+                    truncated["content"] = c[:MAX_TOOL_RESULT_STREAM_CHARS] + "\n\n... [truncated for stream]"
+                    truncated["_truncated"] = True
+                    truncated["_original_length"] = len(c)
+                    return truncated
+            return raw_output
+        try:
+            out_str = json.dumps(raw_output)
+            if len(out_str) <= MAX_TOOL_RESULT_STREAM_CHARS:
+                return raw_output
+        except (TypeError, ValueError):
+            pass
+        return raw_output
+
     def build_tool_result(
         self, 
         tc_id: str, 
@@ -292,6 +325,18 @@ class MessageBuilder:
             except (TypeError, ValueError):
                 content_value = str(raw_output)
         
+        # Truncate for stream so frontend and proxies don't choke on huge payloads
+        stream_output = self._truncate_for_stream(raw_output, name)
+        if isinstance(stream_output, str):
+            content_value = stream_output
+        elif stream_output is not None:
+            try:
+                content_value = json.dumps(stream_output)
+            except (TypeError, ValueError):
+                content_value = content_value[:MAX_TOOL_RESULT_STREAM_CHARS] + "\n\n... [truncated]"
+        elif content_value and len(content_value) > MAX_TOOL_RESULT_STREAM_CHARS:
+            content_value = content_value[:MAX_TOOL_RESULT_STREAM_CHARS] + "\n\n... [truncated for stream]"
+        
         content = {
             "name": name,
             "role": "tool",
@@ -301,12 +346,12 @@ class MessageBuilder:
         
         message_id = str(uuid.uuid4())
         
-        output_for_metadata = raw_output
-        if isinstance(raw_output, str):
-            try:
-                output_for_metadata = json.loads(raw_output)
-            except:
-                output_for_metadata = raw_output
+        output_for_metadata = stream_output if stream_output is not None else raw_output
+        if output_for_metadata is None:
+            output_for_metadata = raw_output
+        # Keep metadata result small (same truncated payload as content) so SSE event is bounded
+        if isinstance(output_for_metadata, str) and len(output_for_metadata) > MAX_TOOL_RESULT_STREAM_CHARS:
+            output_for_metadata = output_for_metadata[:MAX_TOOL_RESULT_STREAM_CHARS] + "\n\n... [truncated for stream]"
         
         metadata = {
             "result": {

@@ -4,7 +4,10 @@
   "scripts": {
     "dev:frontend": "pnpm --filter Kortix dev",
     "dev:mobile": "pnpm --filter kortix dev",
-    "build:frontend": "pnpm --filter Kortix build"
+    "build:frontend": "pnpm --filter Kortix build",
+    "supabase:start": "cd backend && supabase start",
+    "supabase:stop": "bash scripts/supabase-stop.sh",
+    "supabase:status": "cd backend && supabase status"
   },
   "pnpm": {
     "overrides": {

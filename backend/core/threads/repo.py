@@ -536,19 +536,22 @@ async def create_thread_with_message_and_run(
         INSERT INTO threads (thread_id, project_id, account_id, name, status, memory_enabled, created_at, updated_at)
         SELECT :thread_id, project_id, :account_id, :thread_name, 'ready', :memory_enabled, :created_at, :updated_at
         FROM new_project
+        ON CONFLICT (thread_id) DO UPDATE SET updated_at = EXCLUDED.updated_at
         RETURNING thread_id
     ),
     new_message AS (
         INSERT INTO messages (message_id, thread_id, type, is_llm_message, content, created_at)
-        SELECT CAST(:message_id AS uuid), thread_id, 'user', true, :message_content, :created_at
-        FROM new_thread
+        SELECT CAST(:message_id AS uuid), nt.thread_id, 'user', true, :message_content, :created_at
+        FROM new_thread nt
         WHERE :has_message = true
+          AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = nt.thread_id)
         RETURNING message_id
     ),
     new_run AS (
         INSERT INTO agent_runs (id, thread_id, status, started_at, agent_id, agent_version_id, metadata)
         SELECT :agent_run_id, thread_id, 'running', :created_at, :agent_id, :agent_version_id, :run_metadata
         FROM new_thread
+        ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, started_at = EXCLUDED.started_at
         RETURNING id
     )
     SELECT 

@@ -125,7 +125,7 @@ export const unifiedAgentStart = async (options: {
     const response = await backendApi.upload<{ thread_id: string; agent_run_id: string; project_id?: string; sandbox_id?: string; status: string }>(
       '/agent/start',
       formData,
-      { showErrors: false, cache: 'no-store' }
+      { showErrors: false, cache: 'no-store', timeout: 120000 }
     );
 
     if (response.error) {
@@ -437,7 +437,7 @@ export const optimisticAgentStart = async (options: {
     const response = await backendApi.upload<OptimisticAgentStartResponse>(
       '/agent/start',  // Now using unified endpoint
       formData,
-      { showErrors: false, cache: 'no-store' }
+      { showErrors: false, cache: 'no-store', timeout: 120000 }
     );
 
     if (response.error) {
