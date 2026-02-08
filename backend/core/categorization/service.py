@@ -1,11 +1,9 @@
 """Service for categorizing projects based on conversation content."""
 import json
 from typing import List
-from core.services.llm import make_llm_api_call
+from core.services.llm import make_llm_api_call, BACKGROUND_TASK_MODEL
 from core.utils.logger import logger
 from core.utils.project_helpers import PROJECT_CATEGORIES
-
-MODEL_NAME = "openai/gpt-5-nano-2025-08-07"
 
 
 async def categorize_from_messages(messages: List[dict]) -> List[str]:
@@ -84,7 +82,7 @@ Return ONLY the JSON object."""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Categorize:\n\n{content}"}
         ],
-        model_name=MODEL_NAME,
+        model_name=BACKGROUND_TASK_MODEL,
         max_tokens=1000,  # Reasoning models need tokens for chain-of-thought before output
         temperature=0.3,
         response_format={"type": "json_object"},

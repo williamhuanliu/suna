@@ -1,6 +1,7 @@
 export const STREAM_CONFIG = {
-  HEARTBEAT_TIMEOUT_MS: 30000,
-  HEARTBEAT_CHECK_INTERVAL_MS: 10000,
+  /** Allow long gaps when LLM is generating large tool call content (e.g. create_file with a full report). */
+  HEARTBEAT_TIMEOUT_MS: 120000, // 2 minutes (was 30s; large file creation can take 1–2 min)
+  HEARTBEAT_CHECK_INTERVAL_MS: 15000, // check every 15s
   
   RECONNECT_BASE_DELAY_MS: 1000,
   RECONNECT_MAX_DELAY_MS: 30000,

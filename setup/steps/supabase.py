@@ -114,8 +114,8 @@ class SupabaseStep(BaseStep):
         if errors:
             return StepResult.fail("Missing required Supabase configuration", errors)
 
-        # Collect OpenAI key for background tasks
-        self._collect_openai_key()
+        # Collect OpenRouter API key for background tasks (default LLM)
+        self._collect_openrouter_key()
 
         self.success("Supabase information saved.")
 
@@ -206,43 +206,44 @@ class SupabaseStep(BaseStep):
         self.config.supabase.DATABASE_URL = constructed_url
         self.success("DATABASE_URL constructed and saved.")
 
-    def _collect_openai_key(self) -> None:
-        """Collect OpenAI API key for background tasks."""
+    def _collect_openrouter_key(self) -> None:
+        """Collect OpenRouter API key (required for background tasks and default LLM)."""
         self.console.print("")
         self.console.print("=" * 70)
-        self.console.print("  OpenAI API Key (Required for Background Tasks)")
+        self.console.print("  OpenRouter API Key (Required for Background Tasks)")
         self.console.print("=" * 70)
-        self.info("Background tasks require OpenAI API key for:")
+        self.info("Background tasks require OpenRouter API key for:")
         self.console.print("  - Generating project names and icons")
         self.console.print("  - Generating thread names")
         self.console.print("  - Generating file names")
         self.console.print("  - Agent setup and configuration")
+        self.console.print("  - Main LLM (e.g. openrouter/anthropic/claude, openrouter/openai/gpt-4o)")
         self.warning("This is MANDATORY - background tasks will fail without it!")
 
-        provider_info = API_PROVIDER_INFO.get("OPENAI_API_KEY", {})
-        existing_key = self.config.llm.OPENAI_API_KEY
+        provider_info = API_PROVIDER_INFO.get("OPENROUTER_API_KEY", {})
+        existing_key = self.config.llm.OPENROUTER_API_KEY
 
         if existing_key:
             self.console.print_api_key_prompt(
-                provider_info.get("name", "OpenAI"),
-                provider_info.get("icon", "🧠"),
+                provider_info.get("name", "OpenRouter"),
+                provider_info.get("icon", "🌐"),
                 provider_info.get("url", ""),
                 provider_info.get("guide", ""),
                 optional=False,
                 existing_value=existing_key,
             )
 
-        self.config.llm.OPENAI_API_KEY = self.ask(
-            "Enter your OpenAI API key (required)",
+        self.config.llm.OPENROUTER_API_KEY = self.ask(
+            "Enter your OpenRouter API key (required)",
             validator=lambda x: validate_api_key(x),
             default=existing_key,
         )
 
-        if not self.config.llm.OPENAI_API_KEY:
-            self.error("OPENAI_API_KEY is REQUIRED for background tasks.")
-            self.error("Get your API key from: https://platform.openai.com/api-keys")
+        if not self.config.llm.OPENROUTER_API_KEY:
+            self.error("OPENROUTER_API_KEY is REQUIRED for background tasks.")
+            self.error("Get your API key from: https://openrouter.ai/keys")
 
-        self.success("OpenAI API key saved for background tasks.")
+        self.success("OpenRouter API key saved for background tasks.")
 
     def get_config_keys(self):
         return [
@@ -251,7 +252,7 @@ class SupabaseStep(BaseStep):
             "SUPABASE_SERVICE_ROLE_KEY",
             "SUPABASE_JWT_SECRET",
             "DATABASE_URL",
-            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
         ]
 
     def is_complete(self) -> bool:

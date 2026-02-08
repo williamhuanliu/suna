@@ -113,7 +113,7 @@ class ConfigLoader:
                 "DAYTONA_TARGET": backend_env.get("DAYTONA_TARGET", ""),
             },
             "llm": {
-                "MAIN_LLM": backend_env.get("MAIN_LLM", "anthropic"),
+                "MAIN_LLM": backend_env.get("MAIN_LLM", "openrouter"),
                 "MAIN_LLM_MODEL": backend_env.get("MAIN_LLM_MODEL", ""),
                 "OPENAI_API_KEY": backend_env.get("OPENAI_API_KEY", ""),
                 "ANTHROPIC_API_KEY": backend_env.get("ANTHROPIC_API_KEY", ""),

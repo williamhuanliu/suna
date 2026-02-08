@@ -8,7 +8,7 @@ import re
 import uuid
 import base64
 from typing import Optional, List, Tuple
-from core.services.llm import make_llm_api_call
+from core.services.llm import make_llm_api_call, BACKGROUND_TASK_MODEL, BACKGROUND_TASK_MODEL_VISION
 from .logger import logger
 
 
@@ -91,8 +91,8 @@ async def generate_smart_filename(
     truncated_prompt = prompt[:200] if len(prompt) > 200 else prompt
     
     try:
-        model_name = "openai/gpt-5-nano-2025-08-07"
-        
+        model_name = BACKGROUND_TASK_MODEL
+
         # Same style as thread naming - concise Title Case
         system_prompt = """You are a file naming assistant. Generate a short, clean title (2-4 words) that describes the content.
 
@@ -245,7 +245,7 @@ async def generate_filename_from_image(
     existing_files = existing_files or []
     
     try:
-        model_name = "openai/gpt-4.1-mini"  # Vision-capable model
+        model_name = BACKGROUND_TASK_MODEL_VISION  # Vision-capable model
         
         # Convert image to base64
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')

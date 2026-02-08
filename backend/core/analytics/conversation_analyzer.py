@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 
 from core.services.supabase import DBConnection
-from core.services.llm import make_llm_api_call
+from core.services.llm import make_llm_api_call, BACKGROUND_TASK_MODEL
 from core.utils.logger import logger
 
 # Default categories (from project_helpers.py - LLM picks or extends)
@@ -363,7 +363,7 @@ async def analyze_conversation(
                 {"role": "system", "content": analysis_prompt},
                 {"role": "user", "content": conversation_text}
             ],
-            model_name="openai/gpt-5-nano-2025-08-07",
+            model_name=BACKGROUND_TASK_MODEL,
             temperature=0.3,
             stream=False,
             response_format={"type": "json_object"},

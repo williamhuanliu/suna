@@ -40,7 +40,7 @@ export const createSandboxFile = async (
     const response = await backendApi.upload(
       `/sandboxes/${sandboxId}/files`,
       formData,
-      { showErrors: true }
+      { showErrors: true, timeout: 90000 } // 90s for large file uploads
     );
 
     if (response.error) {
@@ -71,7 +71,7 @@ export const createSandboxFileJson = async (
         path: filePath,
         content: content,
       },
-      { showErrors: true }
+      { showErrors: true, timeout: 90000 } // 90s for large content (e.g. reports)
     );
 
     if (response.error) {
@@ -126,12 +126,13 @@ export const getSandboxFileContent = async (
     const normalizedPath = normalizePathWithUnicode(path);
     const response = await backendApi.get<string | Blob>(
       `/sandboxes/${sandboxId}/files/content?path=${encodeURIComponent(normalizedPath)}`,
-      { showErrors: true }
+      { showErrors: true, timeout: 60000 } // 60s for large files / slow sandbox
     );
 
     if (response.error) {
+      const status = response.error.status != null ? ` (${response.error.status})` : '';
       throw new Error(
-        `Error getting sandbox file content: ${response.error.message} (${response.error.status})`,
+        `Error getting sandbox file content: ${response.error.message}${status}`,
       );
     }
 

@@ -51,8 +51,8 @@ class Configuration:
     AGENT_TOOL_EXECUTION_STRATEGY: str = "parallel"  # "parallel" or "sequential"
     
     # Model selection
-    # Options: "bedrock", "anthropic", "minimax", "grok", "openai"
-    MAIN_LLM: str = "bedrock"
+    # Options: "bedrock", "anthropic", "minimax", "grok", "openai", "openrouter"
+    MAIN_LLM: str = "openrouter"
     # Optional: Override the default model for the selected provider
     # If not set, uses the default model for the provider:
     #   - anthropic: anthropic/claude-haiku-4-5-20251001

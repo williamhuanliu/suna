@@ -5,7 +5,7 @@ Uses the same LLM-based approach as project name generation
 import json
 import traceback
 from core.services.supabase import DBConnection
-from core.services.llm import make_llm_api_call
+from core.services.llm import make_llm_api_call, BACKGROUND_TASK_MODEL
 from .logger import logger
 
 
@@ -28,7 +28,7 @@ async def generate_and_update_thread_name(thread_id: str, prompt: str):
         client = await db_conn.client
 
         # Use same model and approach as project name generation
-        model_name = "openai/gpt-5-nano-2025-08-07"
+        model_name = BACKGROUND_TASK_MODEL
         
         system_prompt = """Generate a concise but accurate and meaningful title (2-6 words) for a chat thread.
 

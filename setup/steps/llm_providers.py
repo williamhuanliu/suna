@@ -32,8 +32,8 @@ def _read_codebase_default_llm(root_dir: str) -> Tuple[str, Optional[str]]:
     except (FileNotFoundError, IOError):
         pass
 
-    # Fallback to anthropic if we can't read the config
-    return "anthropic", None
+    # Fallback to openrouter if we can't read the config
+    return "openrouter", None
 
 
 class LLMProvidersStep(BaseStep):
@@ -78,6 +78,12 @@ class LLMProvidersStep(BaseStep):
             "OPENROUTER_API_KEY",
             "openrouter/minimax/minimax-m2.1",
         ),
+        "6": (
+            "OpenRouter (default)",
+            "openrouter",
+            "OPENROUTER_API_KEY",
+            "openrouter/anthropic/claude-3.5-haiku",
+        ),
     }
 
     # Additional optional LLM providers
@@ -117,7 +123,7 @@ class LLMProvidersStep(BaseStep):
             if pid == provider_id:
                 return (provider_id, env_key, model)
         # Fallback
-        return ("bedrock", "AWS_BEARER_TOKEN_BEDROCK", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
+        return ("openrouter", "OPENROUTER_API_KEY", "openrouter/anthropic/claude-3.5-haiku")
 
     def _configure_main_provider(self) -> None:
         """Configure the main LLM model (required for kortix/basic)."""

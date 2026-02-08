@@ -79,6 +79,13 @@ class LLMError(Exception):
     pass
 
 
+# Model used for background tasks (thread names, project names/icons, file names, analytics, etc.).
+# Uses OpenRouter so OPENROUTER_API_KEY is used when OpenAI key is not set.
+BACKGROUND_TASK_MODEL = "openrouter/openai/gpt-4o-mini"
+# Vision-capable model for image-to-filename (same provider for consistency).
+BACKGROUND_TASK_MODEL_VISION = "openrouter/openai/gpt-4o"
+
+
 def setup_api_keys() -> None:
     if not config:
         return
