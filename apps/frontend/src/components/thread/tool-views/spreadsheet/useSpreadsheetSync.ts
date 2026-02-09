@@ -128,6 +128,7 @@ export function useSpreadsheetSync({
   const initialLoadDoneRef = useRef(false);
   const pendingChangesRef = useRef(false);
   const isLoadingRef = useRef(false);
+  const fileNotFoundRef = useRef(false);
 
   const cacheKey = sandboxId && filePath ? `${sandboxId}:${filePath}` : null;
 
@@ -223,6 +224,9 @@ export function useSpreadsheetSync({
       const file = new File([fileBlob], fileName, { type: mimeType });
       spreadsheetRef.current.open({ file });
 
+      // Clear the file-not-found flag on success
+      fileNotFoundRef.current = false;
+
       setSyncState({
         status: 'synced',
         lastSyncedAt: Date.now(),
@@ -234,6 +238,12 @@ export function useSpreadsheetSync({
       return true;
     } catch (error: any) {
       console.error('[SpreadsheetSync] Load error:', error);
+
+      // Detect "file not found" (404) errors — stop retrying / polling for these
+      const errorMsg = (error?.message || '').toLowerCase();
+      if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+        fileNotFoundRef.current = true;
+      }
 
       if (!isOnlineRef.current && cacheKey) {
         const cached = await getCachedFile(cacheKey);
@@ -261,7 +271,9 @@ export function useSpreadsheetSync({
       setSyncState(prev => ({
         ...prev,
         status: 'error',
-        errorMessage: error?.message || 'Failed to load spreadsheet',
+        errorMessage: fileNotFoundRef.current
+          ? 'File not found in sandbox. It may need to be re-uploaded.'
+          : (error?.message || 'Failed to load spreadsheet'),
       }));
 
       setIsLoading(false);
@@ -551,7 +563,7 @@ export function useSpreadsheetSync({
 
     pollIntervalRef.current = setInterval(async () => {
       // Use refs to check current state without causing interval recreation
-      if (!hasInitiallyLoadedRef.current || isSavingRef.current || !isOnlineRef.current || isLoadingRef.current || isEditingRef.current) {
+      if (!hasInitiallyLoadedRef.current || isSavingRef.current || !isOnlineRef.current || isLoadingRef.current || isEditingRef.current || fileNotFoundRef.current) {
         return;
       }
 

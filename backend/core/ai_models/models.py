@@ -124,10 +124,13 @@ class Model:
         return get_provider_for_model(self.litellm_model_id or self.id)
     
     def get_litellm_params(self, **override_params) -> Dict[str, Any]:
+        # Fast models (no reasoning) get a short timeout; reasoning models get 10min.
+        has_reasoning = self.config and self.config.reasoning and self.config.reasoning.enabled
+        default_timeout = 600 if has_reasoning else 120
         params = {
             "model": self.litellm_model_id,
             "num_retries": 1,
-            "timeout": 600,  # 10 minutes - needed for models with extended reasoning (Kimi, MiniMax)
+            "timeout": default_timeout,
         }
         
         if self.config:

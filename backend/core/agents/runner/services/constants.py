@@ -2,12 +2,12 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
 
-REDIS_STREAM_TTL_SECONDS = 600
+REDIS_STREAM_TTL_SECONDS = 300  # 5 min is enough for data tasks
 TIMEOUT_MCP_INIT = 3.0
 TIMEOUT_PROJECT_METADATA = 2.0
 TIMEOUT_DYNAMIC_TOOLS = 5.0
 TIMEOUT_DB_QUERY = 3.0
-STOP_CHECK_INTERVAL = float(os.getenv("AGENT_STOP_CHECK_INTERVAL", "2.0"))
+STOP_CHECK_INTERVAL = float(os.getenv("AGENT_STOP_CHECK_INTERVAL", "1.0"))
 
 
 def _calculate_thread_pool_size() -> int:

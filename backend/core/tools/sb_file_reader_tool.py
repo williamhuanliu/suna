@@ -9,7 +9,9 @@ from core.agentpress.thread_manager import ThreadManager
 from core.utils.config import config
 from core.utils.logger import logger
 
-MAX_OUTPUT_CHARS = 50000
+# Lowered from 50k to 20k for speed: less data through sandbox API + smaller SSE payload.
+# For data analysis, the LLM can always run pandas in execute_command for the full dataset.
+MAX_OUTPUT_CHARS = 20000
 MAX_BATCH_SIZE = 20
 KB_VERSION = "0.1.2"
 
@@ -77,13 +79,12 @@ class SandboxFileReaderTool(SandboxToolsBase):
         super().__init__(project_id, thread_manager)
         self._kb_ready = False
 
-    async def _wait_for_uploads(self, timeout: int = 60) -> bool:
+    async def _wait_for_uploads(self, timeout: int = 10) -> bool:
         from core.services import redis
         
         key = f"file_upload_pending:{self.project_id}"
         start_time = asyncio.get_event_loop().time()
-        # Reduced polling frequency from 0.5s to 2s to minimize Redis load
-        POLL_INTERVAL = 2.0
+        POLL_INTERVAL = 1.0
         
         while True:
             # Use timeout-protected get
@@ -183,7 +184,7 @@ class SandboxFileReaderTool(SandboxToolsBase):
                 # Try pdftotext first (fast for native PDFs)
                 result = await self.sandbox.process.exec(
                     f'pdftotext {escaped_path} - 2>/dev/null',
-                    timeout=60
+                    timeout=30
                 )
                 if result.exit_code == 0 and result.result.strip():
                     content = result.result
@@ -192,7 +193,7 @@ class SandboxFileReaderTool(SandboxToolsBase):
                     # Try pdftotext with layout preservation
                     result = await self.sandbox.process.exec(
                         f'pdftotext -layout {escaped_path} - 2>/dev/null',
-                        timeout=60
+                        timeout=30
                     )
                     if result.exit_code == 0 and result.result.strip():
                         content = result.result
@@ -201,7 +202,7 @@ class SandboxFileReaderTool(SandboxToolsBase):
                         # Try PyPDF2 as fallback
                         result = await self.sandbox.process.exec(
                             f'python3 -c "import PyPDF2; r=PyPDF2.PdfReader({escaped_path!r}); print(\\"\\n\\".join(p.extract_text() or \\"\\" for p in r.pages))"',
-                            timeout=60
+                            timeout=30
                         )
                         if result.exit_code == 0 and result.result.strip():
                             content = result.result
@@ -223,7 +224,7 @@ class SandboxFileReaderTool(SandboxToolsBase):
             elif file_type == 'doc':
                 result = await self.sandbox.process.exec(
                     f'catdoc {escaped_path} 2>/dev/null || antiword {escaped_path} 2>/dev/null',
-                    timeout=60
+                    timeout=30
                 )
                 if result.exit_code != 0:
                     return {
@@ -237,12 +238,12 @@ class SandboxFileReaderTool(SandboxToolsBase):
             elif file_type == 'docx':
                 result = await self.sandbox.process.exec(
                     f"unzip -p {escaped_path} word/document.xml 2>/dev/null | sed -e 's/<[^>]*>//g' | tr -s ' \\n'",
-                    timeout=60
+                    timeout=30
                 )
                 if result.exit_code != 0 or not result.result.strip():
                     result = await self.sandbox.process.exec(
-                        f'cat {escaped_path}',
-                        timeout=60
+                        f'head -c {MAX_OUTPUT_CHARS} {escaped_path}',
+                        timeout=30
                     )
                     extraction_method = "raw"
                 else:
@@ -251,13 +252,13 @@ class SandboxFileReaderTool(SandboxToolsBase):
 
             elif file_type == 'pptx':
                 result = await self.sandbox.process.exec(
-                    f"unzip -p {escaped_path} 'ppt/slides/*.xml' 2>/dev/null | sed -e 's/<[^>]*>//g' | tr -s ' \\n' | head -c 100000",
-                    timeout=60
+                    f"unzip -p {escaped_path} 'ppt/slides/*.xml' 2>/dev/null | sed -e 's/<[^>]*>//g' | tr -s ' \\n' | head -c {MAX_OUTPUT_CHARS}",
+                    timeout=30
                 )
                 if result.exit_code != 0 or not result.result.strip():
                     result = await self.sandbox.process.exec(
                         f"python3 -c \"from pptx import Presentation; p=Presentation({escaped_path!r}); print('\\n'.join(shape.text for slide in p.slides for shape in slide.shapes if hasattr(shape, 'text')))\"",
-                        timeout=60
+                        timeout=30
                     )
                     extraction_method = "python-pptx"
                 else:
@@ -273,7 +274,7 @@ class SandboxFileReaderTool(SandboxToolsBase):
             elif file_type == 'ppt':
                 result = await self.sandbox.process.exec(
                     f"catppt {escaped_path} 2>/dev/null",
-                    timeout=60
+                    timeout=30
                 )
                 if result.exit_code != 0:
                     return {
@@ -286,13 +287,13 @@ class SandboxFileReaderTool(SandboxToolsBase):
 
             elif file_type == 'xlsx':
                 result = await self.sandbox.process.exec(
-                    f"python3 -c \"import openpyxl; wb=openpyxl.load_workbook({escaped_path!r}, data_only=True); [print(f'=== Sheet: {{ws.title}} ===') or [print('\\t'.join(str(c.value or '') for c in row)) for row in ws.iter_rows()] for ws in wb.worksheets]\" 2>/dev/null | head -c 100000",
-                    timeout=60
+                    f"python3 -c \"import openpyxl; wb=openpyxl.load_workbook({escaped_path!r}, data_only=True); [print(f'=== Sheet: {{ws.title}} ===') or [print('\\t'.join(str(c.value or '') for c in row)) for row in ws.iter_rows()] for ws in wb.worksheets]\" 2>/dev/null | head -c {MAX_OUTPUT_CHARS}",
+                    timeout=30
                 )
                 if result.exit_code != 0 or not result.result.strip():
                     result = await self.sandbox.process.exec(
-                        f"unzip -p {escaped_path} 'xl/sharedStrings.xml' 2>/dev/null | sed -e 's/<[^>]*>//g' | tr -s ' \\n' | head -c 100000",
-                        timeout=60
+                        f"unzip -p {escaped_path} 'xl/sharedStrings.xml' 2>/dev/null | sed -e 's/<[^>]*>//g' | tr -s ' \\n' | head -c {MAX_OUTPUT_CHARS}",
+                        timeout=30
                     )
                     extraction_method = "unzip"
                 else:
@@ -307,13 +308,13 @@ class SandboxFileReaderTool(SandboxToolsBase):
 
             elif file_type == 'xls':
                 result = await self.sandbox.process.exec(
-                    f"python3 -c \"import xlrd; wb=xlrd.open_workbook({escaped_path!r}); [print(f'=== Sheet: {{ws.name}} ===') or [print('\\t'.join(str(ws.cell_value(r,c)) for c in range(ws.ncols))) for r in range(ws.nrows)] for ws in wb.sheets()]\" 2>/dev/null | head -c 100000",
-                    timeout=60
+                    f"python3 -c \"import xlrd; wb=xlrd.open_workbook({escaped_path!r}); [print(f'=== Sheet: {{ws.name}} ===') or [print('\\t'.join(str(ws.cell_value(r,c)) for c in range(ws.ncols))) for r in range(ws.nrows)] for ws in wb.sheets()]\" 2>/dev/null | head -c {MAX_OUTPUT_CHARS}",
+                    timeout=30
                 )
                 if result.exit_code != 0:
                     result = await self.sandbox.process.exec(
-                        f"xls2csv {escaped_path} 2>/dev/null | head -c 100000",
-                        timeout=60
+                        f"xls2csv {escaped_path} 2>/dev/null | head -c {MAX_OUTPUT_CHARS}",
+                        timeout=30
                     )
                     extraction_method = "xls2csv"
                 else:
@@ -327,9 +328,10 @@ class SandboxFileReaderTool(SandboxToolsBase):
                 content = result.result
 
             else:
+                # Read at most MAX_OUTPUT_CHARS bytes to avoid transferring huge files
                 result = await self.sandbox.process.exec(
-                    f'cat {escaped_path}',
-                    timeout=60
+                    f'head -c {MAX_OUTPUT_CHARS} {escaped_path}',
+                    timeout=30
                 )
                 if result.exit_code != 0:
                     return {
@@ -338,7 +340,7 @@ class SandboxFileReaderTool(SandboxToolsBase):
                         "error": f"Failed to read file"
                     }
                 content = result.result
-                extraction_method = "cat"
+                extraction_method = "head"
 
             truncated = False
             if len(content) > MAX_OUTPUT_CHARS:

@@ -60,6 +60,9 @@ class Configuration:
     #   - openai: openrouter/openai/gpt-4o-mini
     #   - minimax: openrouter/minimax/minimax-m2.1
     MAIN_LLM_MODEL: Optional[str] = None
+    # Default agent model for Data project (SUNA_CONFIG). Override in .env to switch without code change.
+    # Examples: kortix/gpt4o-mini (cheap+fast), kortix/deepseek-v3 (cheaper), kortix/minimax (free).
+    SUNA_DATA_MODEL: Optional[str] = "kortix/gpt4o-mini"
     # ============================================
     
     # ===== PRESENCE CONFIGURATION =====
@@ -291,9 +294,10 @@ class Configuration:
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     
+    # Data-only: disable KB/memory/user-context to save prompt tokens and latency
     ENABLE_MEMORY: bool = False
-    ENABLE_KNOWLEDGE_BASE: bool = True
-    ENABLE_USER_CONTEXT: bool = True
+    ENABLE_KNOWLEDGE_BASE: bool = False
+    ENABLE_USER_CONTEXT: bool = False
     MEMORY_EMBEDDING_PROVIDER: Optional[str] = "openai"
     MEMORY_EMBEDDING_MODEL: Optional[str] = "text-embedding-3-small"
     MEMORY_EXTRACTION_MODEL: Optional[str] = "kortix/basic"

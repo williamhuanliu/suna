@@ -25,7 +25,7 @@ from .initialization import ManagerInitializer
 class StatelessCoordinator(BaseCoordinator):
     INIT_TIMEOUT = 10.0
 
-    async def execute(self, ctx: PipelineContext, max_steps: int = 25) -> AsyncGenerator[Dict[str, Any], None]:
+    async def execute(self, ctx: PipelineContext, max_steps: int = 15) -> AsyncGenerator[Dict[str, Any], None]:
         start = time.time()
         self._thread_run_id = str(uuid.uuid4())
 
@@ -213,16 +213,14 @@ class StatelessCoordinator(BaseCoordinator):
         except Exception as e:
             logger.warning(f"[Coordinator] Pre-status flush error: {e}")
 
-        await asyncio.sleep(0.2)
-
-        # Queue for conversation analytics (non-blocking)
+        # Queue for conversation analytics (non-blocking, fire-and-forget)
         try:
             from core.analytics.conversation_analyzer import queue_for_analysis
-            await queue_for_analysis(
+            asyncio.create_task(queue_for_analysis(
                 thread_id=self._state.thread_id,
                 agent_run_id=self._state.run_id,
                 account_id=self._state.account_id
-            )
+            ))
         except Exception as e:
             logger.warning(f"[Coordinator] Failed to queue analytics: {e}")
 

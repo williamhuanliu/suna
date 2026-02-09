@@ -60,25 +60,10 @@ class ToolGuideRegistry:
     
     def _build_minimal_index(self) -> None:
         lines = [
-            "# 9. AVAILABLE TOOLS",
+            "# Available Tools",
             "",
-            "**🔴 MANDATORY:** Before using any tool, use initialize_tools to activate and get usage instructions.",
-            "",
-            "**Batch load ALL tools you need upfront:**",
-            "- Analyze user request → Identify all needed tools → Load in ONE call",
-            "- Example: initialize tools like web_search_tool, browser_tool, sb_files_tool together",
-            "",
-            "**🚨 CRITICAL - Tool Guides Give You Function Names:**",
-            "Each tool provides SPECIFIC FUNCTIONS. Loading the guide reveals what you can use:",
-            "- sb_presentation_tool → create_slide, load_template_design",
-            "- sb_files_tool → create_file, edit_file, full_file_rewrite",
-            "- sb_file_reader_tool → read_file - read PDFs, documents, text files, CSV, JSON, code",
-            "- browser_tool → browser_navigate, browser_click, browser_screenshot",
-            "- web_search_tool → web_search, web_search_streaming",
-            "",
-            "**⚠️ Use Specialized Functions, NOT Generic Ones:**",
-            "- Creating presentations? Use create_slide from sb_presentation_tool, NOT create_file",
-            "- Always load the guide FIRST to see what specialized functions exist!",
+            "Use initialize_tools to activate tools and get usage instructions.",
+            "Batch load all needed tools in ONE call.",
             "",
             "**Tool Names:**",
             ""

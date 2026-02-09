@@ -20,6 +20,8 @@ class JITLoader:
     
     @staticmethod
     def get_core_tools() -> List[str]:
+        """Core tools that get preloaded guides. Minimal data set for fast prompts.
+        git_sync, upload, expose are available but guides load on-demand via JIT."""
         return [
             'expand_msg_tool',
             'message_tool',
@@ -28,15 +30,6 @@ class JITLoader:
             'sb_files_tool',
             'sb_file_reader_tool',
             'sb_spreadsheet_tool',
-            'web_search_tool',
-            'image_search_tool',
-            'sb_vision_tool',
-            'sb_image_edit_tool',
-            'browser_tool',
-            'sb_git_sync',
-            'sb_upload_file_tool',
-            'sb_expose_tool',
-            'sb_kb_tool',  # Knowledge base operations
         ]
     
     @staticmethod

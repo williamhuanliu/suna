@@ -478,13 +478,51 @@ async def read_file(
             raise HTTPException(status_code=500, detail=f"Failed to retrieve sandbox: {str(sandbox_err)}")
         
         # Read file with retry logic for transient errors (502, 503, 504)
-        try:
-            content = await retry_with_backoff(
-                operation=lambda: sandbox.fs.download_file(path),
-                operation_name=f"download_file({path}) from sandbox {sandbox_id}"
-            )
-        except Exception as download_err:
-            error_msg = str(download_err)
+        # Also retry "file not found" if an upload is in progress (race condition)
+        max_upload_wait_attempts = 6  # up to ~12 seconds of waiting
+        upload_wait_delay = 2.0
+        last_download_err = None
+        
+        for attempt in range(max_upload_wait_attempts):
+            try:
+                content = await retry_with_backoff(
+                    operation=lambda: sandbox.fs.download_file(path),
+                    operation_name=f"download_file({path}) from sandbox {sandbox_id}"
+                )
+                last_download_err = None
+                break  # Success
+            except Exception as download_err:
+                last_download_err = download_err
+                error_msg = str(download_err).lower()
+                
+                # Only retry for "file not found" if there's a pending upload
+                if 'not found' in error_msg or '404' in error_msg:
+                    if attempt < max_upload_wait_attempts - 1:
+                        # Check if there's a pending file upload for this sandbox's project
+                        try:
+                            from core.services import redis as redis_service
+                            from core.resources import ResourceService, ResourceType
+                            resource_service = ResourceService(client)
+                            resource = await resource_service.get_resource_by_external_id(sandbox_id, ResourceType.SANDBOX)
+                            if resource:
+                                project_id = resource.get('project_id')
+                                if project_id:
+                                    pending_key = f"file_upload_pending:{project_id}"
+                                    pending = await redis_service.get(pending_key, timeout=2.0)
+                                    if pending:
+                                        logger.info(f"File {path} not found but upload in progress ({pending} files pending), waiting {upload_wait_delay}s (attempt {attempt + 1}/{max_upload_wait_attempts})")
+                                        await asyncio.sleep(upload_wait_delay)
+                                        continue
+                        except Exception as redis_err:
+                            logger.debug(f"Could not check upload status: {redis_err}")
+                    # No pending upload or max attempts reached — fall through to error
+                    break
+                else:
+                    # Not a "file not found" error — don't retry
+                    break
+        
+        if last_download_err:
+            error_msg = str(last_download_err)
             logger.error(f"Error downloading file {path} from sandbox {sandbox_id}: {error_msg}")
             # Check if it's a file not found error
             if 'not found' in error_msg.lower() or '404' in error_msg.lower():

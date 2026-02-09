@@ -62,10 +62,14 @@ def load_static_suna_config() -> Dict[str, Any]:
     
     from core.config.suna_config import SUNA_CONFIG
     from core.config.config_helper import _extract_agentpress_tools_for_run
+    from core.utils.config import config
+    
+    # SUNA_DATA_MODEL in .env overrides the default agent model (e.g. for Data project).
+    model = getattr(config, 'SUNA_DATA_MODEL', None) or SUNA_CONFIG['model']
     
     _SUNA_STATIC_CONFIG = {
         'system_prompt': SUNA_CONFIG['system_prompt'],
-        'model': SUNA_CONFIG['model'],
+        'model': model,
         'agentpress_tools': _extract_agentpress_tools_for_run(SUNA_CONFIG['agentpress_tools']),
         'centrally_managed': True,
         'is_suna_default': True,
@@ -79,7 +83,7 @@ def load_static_suna_config() -> Dict[str, Any]:
     }
     
     _SUNA_STATIC_LOADED = True
-    logger.info(f"✅ Loaded static Suna config into memory (prompt: {len(_SUNA_STATIC_CONFIG['system_prompt'])} chars)")
+    logger.info(f"✅ Loaded static Suna config into memory (model: {model}, prompt: {len(_SUNA_STATIC_CONFIG['system_prompt'])} chars)")
     return _SUNA_STATIC_CONFIG
 
 # ============================================================================

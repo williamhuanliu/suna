@@ -145,7 +145,19 @@ class ExecutionEngine:
         cached_system = add_cache_control(system)
         prepared = [cached_system] + processed_messages
         
-        tokens = await self.fast_token_count(prepared, self._state.model_name)
+        # Estimate tokens cheaply first; only count precisely when close to limit
+        estimated_chars = sum(len(str(m.get('content', ''))) for m in prepared)
+        estimated_tokens = estimated_chars // 3  # rough 1 token ≈ 3 chars
+        
+        from core.ai_models import model_manager as _mm
+        context_window = _mm.get_context_window(self._state.model_name)
+        safety_threshold = self.get_safety_threshold(context_window)
+        
+        # Only do expensive token count if we might be near the limit (within 70%)
+        if estimated_tokens > safety_threshold * 0.7:
+            tokens = await self.fast_token_count(prepared, self._state.model_name)
+        else:
+            tokens = estimated_tokens
         
         await stream_context_usage(
             stream_key=self._state.stream_key,
@@ -212,7 +224,7 @@ class ExecutionEngine:
                 prepared_messages=prepared,
                 llm_model=self._state.model_name,
                 llm_temperature=0,
-                llm_max_tokens=None,
+                llm_max_tokens=32768,  # Need headroom for HTML report generation via Python scripts
                 openapi_tool_schemas=self._state.tool_schemas,
                 tool_choice="auto",
                 native_tool_calling=processor_config.native_tool_calling,

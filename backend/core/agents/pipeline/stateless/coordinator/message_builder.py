@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from core.utils.logger import logger
 
 # Max size for tool result in stream (avoid huge SSE payloads that break frontend or proxies)
-MAX_TOOL_RESULT_STREAM_CHARS = 32_000
+# Lowered from 32k to 16k: less data over SSE = faster UI updates, less frontend parsing
+MAX_TOOL_RESULT_STREAM_CHARS = 16_000
 
 def _transform_mcp_tool_call(func_name: str, args: Any) -> Tuple[str, Any]:
     if func_name != 'execute_mcp_tool':

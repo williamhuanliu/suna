@@ -10,28 +10,18 @@ from core.utils.config import config
 from core.utils.logger import logger
 
 
-# Default core tools - can be overridden by agent config
+# Default core tools — data-only set (no browser/vision/image/agent-builder)
 DEFAULT_CORE_TOOLS = [
     'expand_msg_tool',      # Always needed for tool loading
     'message_tool',         # Always needed for user communication
     'task_list_tool',       # Task management
     'web_search_tool',      # Web search
-    'image_search_tool',    # Image search
-    'browser_tool',         # Web browsing
     'sb_shell_tool',        # Shell commands
     'sb_git_sync',          # Git operations
     'sb_files_tool',        # File operations
     'sb_file_reader_tool',  # File reading
-    'sb_vision_tool',       # Image understanding
-    'sb_image_edit_tool',   # Image generation
     'sb_upload_file_tool',  # File uploads
     'sb_expose_tool',       # Port exposure
-    'sb_kb_tool',           # Knowledge base operations
-    'agent_config_tool',
-    'agent_creation_tool',
-    'mcp_search_tool',
-    'credential_profile_tool',
-    'trigger_tool',
 ]
 
 
