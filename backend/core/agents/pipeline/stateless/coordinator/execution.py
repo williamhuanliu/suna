@@ -220,11 +220,15 @@ class ExecutionEngine:
 
         executor = LLMExecutor()
         try:
+            # Large create_file (build_report.py) can hit output limit and stop mid-stream; use 80k+.
+            llm_max_tokens = 81920
+            if self._state.agent_config and isinstance(self._state.agent_config, dict):
+                llm_max_tokens = int(self._state.agent_config.get("llm_max_tokens", 81920))
             response = await executor.execute(
                 prepared_messages=prepared,
                 llm_model=self._state.model_name,
                 llm_temperature=0,
-                llm_max_tokens=32768,  # Need headroom for HTML report generation via Python scripts
+                llm_max_tokens=llm_max_tokens,
                 openapi_tool_schemas=self._state.tool_schemas,
                 tool_choice="auto",
                 native_tool_calling=processor_config.native_tool_calling,

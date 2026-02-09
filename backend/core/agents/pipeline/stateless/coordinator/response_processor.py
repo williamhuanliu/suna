@@ -95,11 +95,20 @@ class ResponseProcessor:
             delta = getattr(choice, 'delta', None)
             finish_reason = getattr(choice, 'finish_reason', None)
 
+            # If we're in the middle of streaming a tool call (e.g. create_file), don't push reasoning
+            # to the left panel — it would interrupt the "Creating File" stream and confuse the user.
+            # We still accumulate reasoning for the final message; just don't yield reasoning_chunk yet.
+            has_incomplete_tool_calls = any(
+                not is_tool_call_complete(tool_call_buffer.get(idx, {}))
+                for idx in tool_call_buffer.keys()
+            )
+
             # Handle reasoning/thinking content (extended thinking, MiniMax reasoning, etc.)
             if delta and hasattr(delta, 'reasoning_content') and delta.reasoning_content:
                 reasoning = delta.reasoning_content
                 self._state.append_reasoning(reasoning)
-                yield self._message_builder.build_reasoning_chunk(reasoning, stream_start)
+                if not has_incomplete_tool_calls:
+                    yield self._message_builder.build_reasoning_chunk(reasoning, stream_start)
 
             if delta and hasattr(delta, 'content') and delta.content:
                 # Check if content is a list of content blocks (Anthropic extended thinking format)
@@ -110,7 +119,8 @@ class ResponseProcessor:
 
                         if block_type == 'thinking' and block_text:
                             self._state.append_reasoning(block_text)
-                            yield self._message_builder.build_reasoning_chunk(block_text, stream_start)
+                            if not has_incomplete_tool_calls:
+                                yield self._message_builder.build_reasoning_chunk(block_text, stream_start)
                         elif block_type == 'text' and block_text:
                             self._state.append_content(block_text)
                             yield self._message_builder.build_content_chunk(block_text, stream_start)
@@ -180,6 +190,7 @@ class ResponseProcessor:
 
             if finish_reason and not finish_processed:
                 finish_processed = True
+                logger.info(f"[ResponseProcessor] Stream ended: finish_reason={finish_reason} (create_file may be truncated if reason is 'length')")
 
                 has_tool_calls = pending_executions or any(
                     is_tool_call_complete(tool_call_buffer.get(idx, {})) 
@@ -516,7 +527,12 @@ class ResponseProcessor:
         accumulated_content = self._state._accumulated_content or ""
         accumulated_reasoning = self._state._accumulated_reasoning or ""
 
-        logger.info(f"[ResponseProcessor] Max tokens reached, saving {len(accumulated_content)} chars of content")
+        # Log clearly so we know Creating File stream stopped due to output length limit, not crash
+        logger.warning(
+            "[ResponseProcessor] Output length limit (max_tokens) reached — stream stopped. "
+            f"Content saved: {len(accumulated_content)} chars, tool_calls: {len(tool_calls)}. "
+            "If create_file was streaming, file content may be truncated; consider increasing llm_max_tokens."
+        )
 
         assistant_message_id = self._state.finalize_assistant_message(
             tool_calls if tool_calls else None,

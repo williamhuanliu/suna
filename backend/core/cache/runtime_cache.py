@@ -70,6 +70,8 @@ def load_static_suna_config() -> Dict[str, Any]:
     _SUNA_STATIC_CONFIG = {
         'system_prompt': SUNA_CONFIG['system_prompt'],
         'model': model,
+        'max_steps': SUNA_CONFIG.get('max_steps', 25),
+        'llm_max_tokens': SUNA_CONFIG.get('llm_max_tokens', 81920),
         'agentpress_tools': _extract_agentpress_tools_for_run(SUNA_CONFIG['agentpress_tools']),
         'centrally_managed': True,
         'is_suna_default': True,

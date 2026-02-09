@@ -32,6 +32,8 @@ export function accumulateToolCallDeltas(
           index: tc.index,
         },
         chunks: [],
+        _cachedMergedArgs: '',
+        _mergedUpTo: 0,
       };
       accumulator.accumulatedToolCalls.set(toolCallId, accumulated);
     }
@@ -46,7 +48,10 @@ export function accumulateToolCallDeltas(
     if (tc.is_delta && tc.arguments_delta) {
       const existingIndex = accumulated.chunks.findIndex(c => c.sequence === sequence);
       if (existingIndex >= 0) {
+        // Overwriting an existing chunk invalidates the cache from that point
         accumulated.chunks[existingIndex].delta = tc.arguments_delta;
+        accumulated._cachedMergedArgs = '';
+        accumulated._mergedUpTo = 0;
       } else {
         accumulated.chunks.push({ sequence, delta: tc.arguments_delta });
       }
@@ -54,6 +59,9 @@ export function accumulateToolCallDeltas(
     } else if (tc.arguments) {
       const argsStr = typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments);
       accumulated.chunks = [{ sequence, delta: argsStr }];
+      // Full replacement — reset cache
+      accumulated._cachedMergedArgs = '';
+      accumulated._mergedUpTo = 0;
     }
   }
 }
@@ -64,10 +72,15 @@ export function reconstructToolCalls(
   const allReconstructedToolCalls = Array.from(accumulator.accumulatedToolCalls.values())
     .sort((a, b) => (a.metadata.index ?? 0) - (b.metadata.index ?? 0))
     .map(accumulated => {
-      let mergedArgs = '';
-      for (const chunk of accumulated.chunks) {
-        mergedArgs += chunk.delta;
+      // Incremental merge: only concatenate chunks we haven't merged yet.
+      // This turns the per-chunk cost from O(totalChars) to O(newDelta).
+      let mergedArgs = accumulated._cachedMergedArgs;
+      const startIdx = accumulated._mergedUpTo;
+      for (let i = startIdx; i < accumulated.chunks.length; i++) {
+        mergedArgs += accumulated.chunks[i].delta;
       }
+      accumulated._cachedMergedArgs = mergedArgs;
+      accumulated._mergedUpTo = accumulated.chunks.length;
       
       const toolCallId = accumulated.metadata.tool_call_id;
       const isCompleted = accumulator.completedToolCallIds.has(toolCallId);
@@ -136,10 +149,13 @@ export function getAccumulatedArgumentsForToolCall(
   const accumulated = accumulator.accumulatedToolCalls.get(toolCallId);
   if (!accumulated) return null;
   
-  let mergedArgs = '';
-  for (const chunk of accumulated.chunks) {
-    mergedArgs += chunk.delta;
+  // Use the incrementally-cached merged args
+  let mergedArgs = accumulated._cachedMergedArgs;
+  for (let i = accumulated._mergedUpTo; i < accumulated.chunks.length; i++) {
+    mergedArgs += accumulated.chunks[i].delta;
   }
+  accumulated._cachedMergedArgs = mergedArgs;
+  accumulated._mergedUpTo = accumulated.chunks.length;
   return mergedArgs;
 }
 

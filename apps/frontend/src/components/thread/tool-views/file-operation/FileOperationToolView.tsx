@@ -281,19 +281,20 @@ export function FileOperationToolView({
     if (typeof rawStreamingSource === 'object') {
       return (rawStreamingSource as Record<string, any>).file_contents || '';
     }
-    try {
-      const parsed = JSON.parse(rawStreamingSource);
-      return parsed.file_contents || '';
-    } catch {
+
+    // Helper: extract file_contents via character-by-character scanning.
+    // More efficient than JSON.parse for large strings because it doesn't
+    // allocate a full JS object; it only extracts the single field we need.
+    const extractViaRegex = (src: string): string => {
       const pattern = /"file_contents"\s*:\s*"/;
-      const match = rawStreamingSource.match(pattern);
+      const match = src.match(pattern);
       if (match && match.index !== undefined) {
         const startIndex = match.index + match[0].length;
         let value = '';
         let i = startIndex;
         let escaped = false;
-        while (i < rawStreamingSource.length) {
-          const char = rawStreamingSource[i];
+        while (i < src.length) {
+          const char = src[i];
           if (escaped) {
             switch (char) {
               case 'n': value += '\n'; break;
@@ -316,6 +317,20 @@ export function FileOperationToolView({
         return value;
       }
       return '';
+    };
+
+    // For large streaming strings (>10k chars), skip JSON.parse entirely.
+    // JSON.parse on 80k+ strings is ~5-10ms and creates GC pressure.
+    // The regex extraction is O(n) but only allocates the field value string.
+    if (typeof rawStreamingSource === 'string' && rawStreamingSource.length > 10000) {
+      return extractViaRegex(rawStreamingSource);
+    }
+
+    try {
+      const parsed = JSON.parse(rawStreamingSource);
+      return parsed.file_contents || '';
+    } catch {
+      return extractViaRegex(rawStreamingSource);
     }
   }, [rawStreamingSource]);
 
@@ -324,19 +339,18 @@ export function FileOperationToolView({
     if (typeof rawStreamingSource === 'object') {
       return (rawStreamingSource as Record<string, any>).code_edit || '';
     }
-    try {
-      const parsed = JSON.parse(rawStreamingSource);
-      return parsed.code_edit || '';
-    } catch {
+
+    // Same pattern as rawFileContents: skip JSON.parse for large strings.
+    const extractViaRegex = (src: string): string => {
       const pattern = /"code_edit"\s*:\s*"/;
-      const match = rawStreamingSource.match(pattern);
+      const match = src.match(pattern);
       if (match && match.index !== undefined) {
         const startIndex = match.index + match[0].length;
         let value = '';
         let i = startIndex;
         let escaped = false;
-        while (i < rawStreamingSource.length) {
-          const char = rawStreamingSource[i];
+        while (i < src.length) {
+          const char = src[i];
           if (escaped) {
             switch (char) {
               case 'n': value += '\n'; break;
@@ -359,6 +373,17 @@ export function FileOperationToolView({
         return value;
       }
       return '';
+    };
+
+    if (typeof rawStreamingSource === 'string' && rawStreamingSource.length > 10000) {
+      return extractViaRegex(rawStreamingSource);
+    }
+
+    try {
+      const parsed = JSON.parse(rawStreamingSource);
+      return parsed.code_edit || '';
+    } catch {
+      return extractViaRegex(rawStreamingSource);
     }
   }, [rawStreamingSource]);
 

@@ -105,14 +105,16 @@ def _create_minimax_model_config() -> ModelConfig:
     )
 
 def _create_kimi_model_config() -> ModelConfig:
-    
-    
+    """Kimi (e.g. K2.5) used for data agent; long report generation needs long stream timeout."""
     return ModelConfig(
-        reasoning=ReasoningSettings(enabled=True)
-        # reasoning always
-        # reasoning=ReasoningSettings(enabled=True)
-
+        reasoning=ReasoningSettings(enabled=True),
+        timeout=600,  # long stream timeout so Creating File / report generation is not cut at 120s
     )
+
+
+def _create_openrouter_long_timeout_config() -> ModelConfig:
+    """OpenRouter basic model (MAIN_LLM=openrouter) has no reasoning; use long timeout for report/Creating File."""
+    return ModelConfig(timeout=600)
 
 
 
@@ -305,7 +307,7 @@ class ModelFactory:
                 enabled=True,
             )
         elif main_llm == "openrouter":
-            # Generic OpenRouter - use custom model or fallback to minimax
+            # Generic OpenRouter - use custom model or fallback to minimax (e.g. Kimi K2.5 for SUNA_DATA_MODEL)
             return Model(
                 id="kortix/basic",
                 name="Kortix Basic",
@@ -322,6 +324,7 @@ class ModelFactory:
                 priority=102,
                 recommended=True,
                 enabled=True,
+                config=_create_openrouter_long_timeout_config(),  # 600s so Creating File / report stream not cut at 120s
             )
         else:  # minimax or unknown
             return Model(

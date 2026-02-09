@@ -10,7 +10,14 @@ export const STREAM_CONFIG = {
   
   STATUS_CHECK_DELAY_MS: 500,
   
-  TOOL_CALL_THROTTLE_MS: 16,
+  /**
+   * Throttle interval for tool-call state updates.
+   * 16ms (≈60fps) causes page freeze on large create_file because each update
+   * triggers O(n) JSON.stringify + JSON.parse on the full accumulated arguments
+   * (which can reach 80k+ chars). 150ms (~7 updates/sec) is imperceptible for
+   * streaming preview and eliminates the freeze.
+   */
+  TOOL_CALL_THROTTLE_MS: 150,
   
   CONTENT_FLUSH_INTERVAL_MS: 16,
   

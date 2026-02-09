@@ -330,9 +330,25 @@ export function useThreadToolCalls(
     (toolCall: UnifiedMessage | null) => {
       if (!toolCall) return;
 
-      // Extract tool calls from UnifiedMessage metadata.tool_calls
-      const metadata = safeJsonParse<ParsedMetadata>(toolCall.metadata, {});
-      const toolCallsFromMetadata = metadata.tool_calls || [];
+      // Prefer _fullToolCalls (non-truncated, direct JS reference) over parsing
+      // the metadata string, which may have arguments truncated to 6000 chars
+      // for JSON.stringify performance.
+      const fullToolCalls = (toolCall as any)._fullToolCalls as Array<{
+        tool_call_id: string;
+        function_name: string;
+        arguments: string;
+        rawArguments?: string;
+        source?: string;
+        tool_result?: any;
+        completed?: boolean;
+      }> | undefined;
+
+      const toolCallsFromMetadata = fullToolCalls && fullToolCalls.length > 0
+        ? fullToolCalls
+        : (() => {
+            const metadata = safeJsonParse<ParsedMetadata>(toolCall.metadata, {});
+            return metadata.tool_calls || [];
+          })();
 
       if (toolCallsFromMetadata.length === 0) return;
 
@@ -366,12 +382,25 @@ export function useThreadToolCalls(
             tc => tc.toolCall.tool_call_id === toolCallId
           );
 
-          // Keep raw string for streaming partial JSON parsing, parse to object for completed
+          // Keep raw string for streaming partial JSON parsing, parse to object for completed.
+          // Skip JSON.parse for very large argument strings during streaming to avoid freeze.
           const rawArgs = metadataToolCall.arguments;
+          const MAX_PARSE_LEN = 8000;
           const parsedArgs = (() => {
             if (!rawArgs) return {};
             if (typeof rawArgs === 'object' && rawArgs !== null) return rawArgs;
             if (typeof rawArgs === 'string') {
+              // Don't full-parse huge arg strings — extract key fields via regex instead.
+              if (rawArgs.length > MAX_PARSE_LEN) {
+                const result: Record<string, string> = {};
+                // Extract small fields from the first 2000 chars (file_path, target_file, path)
+                const head = rawArgs.slice(0, 2000);
+                for (const key of ['file_path', 'target_file', 'path', 'command', 'url', 'query']) {
+                  const m = head.match(new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`));
+                  if (m) result[key] = m[1];
+                }
+                return result;
+              }
               try {
                 return JSON.parse(rawArgs);
               } catch {
@@ -392,7 +421,7 @@ export function useThreadToolCalls(
               arguments: parsedArgs,
               // Store raw string for streaming partial JSON parsing
               rawArguments: typeof rawArgs === 'string' ? rawArgs : undefined,
-              source: metadataToolCall.source || 'native',
+              source: (metadataToolCall.source === 'xml' ? 'xml' : 'native') as 'native' | 'xml',
             },
             // Merge tool result if available (real-time result from useAgentStream)
             toolResult: toolResult ? {
@@ -414,10 +443,19 @@ export function useThreadToolCalls(
                 normalizedArgs = args;
               } else if (typeof args === 'string') {
                 rawArgsStr = args; // Keep raw string for streaming
-                try {
-                  normalizedArgs = JSON.parse(args);
-                } catch {
-                  normalizedArgs = {};
+                if (args.length <= MAX_PARSE_LEN) {
+                  try {
+                    normalizedArgs = JSON.parse(args);
+                  } catch {
+                    normalizedArgs = {};
+                  }
+                } else {
+                  // Extract key fields via regex for large strings
+                  const head = args.slice(0, 2000);
+                  for (const key of ['file_path', 'target_file', 'path', 'command', 'url', 'query']) {
+                    const m = head.match(new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`));
+                    if (m) normalizedArgs[key] = m[1];
+                  }
                 }
               }
             }

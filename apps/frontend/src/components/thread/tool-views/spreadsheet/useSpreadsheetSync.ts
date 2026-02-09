@@ -188,7 +188,18 @@ export function useSpreadsheetSync({
     }
 
     try {
-      const content = await getSandboxFileContent(sandboxId, filePath);
+      let content: string | Blob;
+      try {
+        content = await getSandboxFileContent(sandboxId, filePath);
+      } catch (firstErr: any) {
+        const msg = (firstErr?.message || '').toLowerCase();
+        if (msg.includes('timeout') && !initialLoadDoneRef.current) {
+          await new Promise(r => setTimeout(r, 2000));
+          content = await getSandboxFileContent(sandboxId, filePath);
+        } else {
+          throw firstErr;
+        }
+      }
 
       const rawFileName = filePath.split('/').pop() || 'spreadsheet.xlsx';
       // Trim whitespace, newlines, and other control characters

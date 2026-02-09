@@ -46,6 +46,8 @@ def _extract_suna_agent_config(agent_data: Dict[str, Any], version_data: Optiona
         'description': SUNA_CONFIG['description'],
         'system_prompt': static_config['system_prompt'],  # From cached config
         'model': static_config['model'],  # From cached config
+        'max_steps': static_config.get('max_steps', 25),  # Data agent: more steps for report retries
+        'llm_max_tokens': static_config.get('llm_max_tokens', 81920),  # avoid create_file stream truncation
         'agentpress_tools': static_config['agentpress_tools'],  # From cached config
         'is_default': True,
         'is_suna_default': True,

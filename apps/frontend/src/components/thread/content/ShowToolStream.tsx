@@ -587,8 +587,11 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
         return 'content';
     }, [toolName, isEditFile, isCreateFile, isFullFileRewrite]);
 
-    // Get raw arguments from tool call for smooth animation
+    // Get raw arguments from tool call for smooth animation.
+    // Skip when showExpanded is false — no streaming preview is rendered,
+    // so we avoid O(n) JSON.parse on the full arguments.
     const rawToolArguments = useMemo(() => {
+        if (!showExpanded) return {};
         if (effectiveToolCall?.arguments) {
             return effectiveToolCall.arguments;
         }
@@ -599,18 +602,20 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
         } catch {
             return throttledContent;
         }
-    }, [effectiveToolCall, throttledContent]);
+    }, [showExpanded, effectiveToolCall, throttledContent]);
 
-    // Apply smooth animation to tool content (120 chars/sec for snappy code display)
+    // Apply smooth animation to tool content (120 chars/sec for snappy code display).
+    // Pass empty object when not expanded to avoid processing huge arguments.
     const smoothFieldValue = useSmoothToolField(
-        rawToolArguments || {},
+        showExpanded ? (rawToolArguments || {}) : {},
         { interval: 8 }
     );
     const isFieldAnimating = !isCompleted;
 
-    // Extract streaming content from JSON or plain text
+    // Extract streaming content from JSON or plain text.
+    // Skip entirely when showExpanded is false — content preview isn't rendered.
     const streamingContent = useMemo(() => {
-        if (!throttledContent) return { html: '', plainText: '' };
+        if (!showExpanded || !throttledContent) return { html: '', plainText: '' };
 
         // Avoid parsing huge payloads (e.g. create_file with 80k chars) to prevent main-thread freeze
         const MAX_PARSE_CHARS = 60_000;
@@ -796,7 +801,7 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
         }
         // Return empty to avoid showing raw JSON
         return { html: '', plainText: '' };
-    }, [throttledContent, toolName, isEditFile, isCreateFile, isFullFileRewrite, smoothFieldValue, isFieldAnimating]);
+    }, [showExpanded, throttledContent, toolName, isEditFile, isCreateFile, isFullFileRewrite, smoothFieldValue, isFieldAnimating]);
 
     // Show streaming content for all streamable tools with delayed transitions
     useEffect(() => {
@@ -831,8 +836,30 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
         return () => container.removeEventListener('scroll', handleScroll);
     }, [shouldShowContent]);
 
-    // Calculate paramDisplay before early return to satisfy Rules of Hooks
-    const paramDisplay = useMemo(() => extractPrimaryParam(rawToolName || '', throttledContent), [rawToolName, throttledContent]);
+    // Calculate paramDisplay before early return to satisfy Rules of Hooks.
+    // Prefer extracting file_path from the toolCall prop (already parsed, avoids re-parsing content).
+    const paramDisplay = useMemo(() => {
+        if (effectiveToolCall?.arguments) {
+            const args = effectiveToolCall.arguments;
+            // arguments may be an object (from persisted messages) or a string (from streaming)
+            if (typeof args === 'object' && args !== null) {
+                const fp = args.file_path || args.target_file || args.path;
+                if (typeof fp === 'string') return fp.split('/').pop() || fp;
+            }
+            if (typeof args === 'string' && args.length < 2000) {
+                const m = args.match(/"(?:file_path|target_file|path)"\s*:\s*"([^"]+)"/);
+                if (m) return m[1].split('/').pop() || m[1];
+            }
+        }
+        // Also check rawArguments (the raw accumulated string, may contain file_path)
+        const rawArgs = effectiveToolCall?.rawArguments;
+        if (typeof rawArgs === 'string' && rawArgs.length < 4000) {
+            const m = rawArgs.match(/"(?:file_path|target_file|path)"\s*:\s*"([^"]+)"/);
+            if (m) return m[1].split('/').pop() || m[1];
+        }
+        // Fallback: parse from content (fast since content is now lightweight)
+        return extractPrimaryParam(rawToolName || '', throttledContent);
+    }, [effectiveToolCall, rawToolName, throttledContent]);
 
     // Check if this is a media generation tool - show shimmer card
     const isMediaGenTool = MEDIA_GENERATION_TOOLS.has(rawToolName || '') || MEDIA_GENERATION_TOOLS.has(toolName || '');

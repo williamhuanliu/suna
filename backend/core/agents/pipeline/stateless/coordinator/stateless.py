@@ -11,6 +11,7 @@ from core.agents.pipeline.stateless.ownership import ownership, idempotency
 from core.agents.pipeline.stateless.lifecycle import lifecycle
 from core.agents.pipeline.stateless.metrics import metrics
 from core.agents.pipeline.ux_streaming import stream_prep_stage, stream_thinking
+from core.services.llm import LLMError
 
 from .base import BaseCoordinator
 from .message_builder import MessageBuilder
@@ -18,6 +19,19 @@ from .tool_executor import ToolExecutor
 from .response_processor import ResponseProcessor
 from .background_tasks import BackgroundTaskManager
 from .execution import ExecutionEngine
+
+# LLM error types that should NOT be retried (permanent failures).
+_NON_RETRYABLE_ERROR_TYPES = frozenset({
+    "authentication_error",
+    "budget_exceeded_error",
+    "content_policy_violation",
+    "context_window_exceeded",
+    "invalid_request_error",
+})
+
+# Maximum number of LLM retries per step (for transient errors like network drops).
+_MAX_LLM_RETRIES = 2
+_LLM_RETRY_BASE_DELAY = 3.0  # seconds
 from .auto_continue import AutoContinueChecker
 from .initialization import ManagerInitializer
 
@@ -25,7 +39,7 @@ from .initialization import ManagerInitializer
 class StatelessCoordinator(BaseCoordinator):
     INIT_TIMEOUT = 10.0
 
-    async def execute(self, ctx: PipelineContext, max_steps: int = 15) -> AsyncGenerator[Dict[str, Any], None]:
+    async def execute(self, ctx: PipelineContext, max_steps: int = 25) -> AsyncGenerator[Dict[str, Any], None]:
         start = time.time()
         self._thread_run_id = str(uuid.uuid4())
 
@@ -143,13 +157,38 @@ class StatelessCoordinator(BaseCoordinator):
             should_auto_continue = False
             force_terminate = False
 
-            async for chunk in execution_engine.execute_step():
-                yield chunk
-                cont, term = AutoContinueChecker.check(chunk, auto_continue_count, max_steps)
-                if term:
-                    force_terminate = True
-                if cont:
-                    should_auto_continue = True
+            # Retry transient LLM errors (network drops, OpenRouter timeouts).
+            # Permanent errors (auth, budget, context window) are NOT retried.
+            llm_retry_count = 0
+            step_succeeded = False
+            while not step_succeeded:
+                try:
+                    async for chunk in execution_engine.execute_step():
+                        yield chunk
+                        cont, term = AutoContinueChecker.check(chunk, auto_continue_count, max_steps)
+                        if term:
+                            force_terminate = True
+                        if cont:
+                            should_auto_continue = True
+                    step_succeeded = True
+                except LLMError as llm_err:
+                    err_msg = str(llm_err).lower()
+                    # Check if this is a permanent (non-retryable) error.
+                    is_permanent = any(t in err_msg for t in _NON_RETRYABLE_ERROR_TYPES)
+                    if is_permanent or llm_retry_count >= _MAX_LLM_RETRIES:
+                        raise  # Propagate up — the coordinator's except will handle it
+                    llm_retry_count += 1
+                    delay = _LLM_RETRY_BASE_DELAY * llm_retry_count
+                    logger.warning(
+                        f"[Coordinator] Transient LLM error on step {step}, "
+                        f"retry {llm_retry_count}/{_MAX_LLM_RETRIES} in {delay:.0f}s: {str(llm_err)[:200]}"
+                    )
+                    yield {
+                        "type": "status",
+                        "status": "running",
+                        "message": f"LLM 连接中断，正在重试 ({llm_retry_count}/{_MAX_LLM_RETRIES})..."
+                    }
+                    await asyncio.sleep(delay)
 
             await idempotency.mark_step(ctx.agent_run_id, step)
             metrics.record_step(time.time() - step_start)

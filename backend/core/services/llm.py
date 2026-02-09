@@ -22,8 +22,10 @@ logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("litellm").setLevel(logging.WARNING)
 
 litellm.num_retries = int(os.environ.get("LITELLM_NUM_RETRIES", 1))
-litellm.request_timeout = int(os.environ.get("LITELLM_REQUEST_TIMEOUT", 300))  # was 1800; 5 min is plenty for data
-litellm.stream_timeout = int(os.environ.get("LITELLM_STREAM_TIMEOUT", 120))  # was 300
+litellm.request_timeout = int(os.environ.get("LITELLM_REQUEST_TIMEOUT", 300))  # 5 min for data/report
+# Stream timeout: ensure at least 300s so Creating File / report stream is not cut at 120s (e.g. OpenRouter)
+_stream_val = int(os.environ.get("LITELLM_STREAM_TIMEOUT", "300"))
+litellm.stream_timeout = max(_stream_val, 300)
 
 from litellm.integrations.custom_logger import CustomLogger
 
@@ -231,6 +233,10 @@ async def make_llm_api_call(
         params["model_id"] = model_id
     if stream:
         params["stream_options"] = {"include_usage": True}
+        # Force long timeout for streaming so Creating File / report generation is not cut at 120s
+        current = params.get("timeout")
+        if current is None or (isinstance(current, (int, float)) and current < 600):
+            params["timeout"] = 600
     
     import time as time_module
     call_start = time_module.monotonic()
@@ -324,7 +330,12 @@ async def _wrap_streaming_response(response, start_time: float, model_name: str,
     except Exception as e:
         processed_error = ErrorProcessor.process_llm_error(e)
         ErrorProcessor.log_error(processed_error)
-        raise LLMError(processed_error.message)
+        # If processed_error.message is empty or generic ("LLM error: "),
+        # include the exception type for diagnostics.
+        msg = processed_error.message
+        if not msg or msg.strip() in ("", "LLM error:", "LLM error: "):
+            msg = f"LLM streaming error after {chunk_count} chunks: {type(e).__name__}: {repr(e)[:300]}"
+        raise LLMError(msg)
     finally:
         duration = time_module.monotonic() - start_time if start_time else 0.0
         if duration > 0:

@@ -107,6 +107,7 @@ async def execute_agent_run(
         )
 
         coordinator = StatelessCoordinator()
+        max_steps = int(agent_config.get("max_steps", 25)) if isinstance(agent_config, dict) else 25
 
         first_response = False
         complete_tool_called = False
@@ -114,7 +115,7 @@ async def execute_agent_run(
         stream_ttl_set = False
         error_message = None
 
-        async for response in coordinator.execute(ctx):
+        async for response in coordinator.execute(ctx, max_steps=max_steps):
             if cancellation_event.is_set() or stop_state['received']:
                 logger.warning(f"🛑 Agent run stopped: {stop_state.get('reason', 'cancellation_event')}")
                 final_status = "stopped"

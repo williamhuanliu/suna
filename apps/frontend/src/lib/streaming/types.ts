@@ -71,6 +71,10 @@ export interface AccumulatedToolCall {
     index?: number;
   };
   chunks: Array<{ sequence: number; delta: string }>;
+  /** Incrementally built merged-arguments cache. Avoids O(n) re-concat on every chunk. */
+  _cachedMergedArgs: string;
+  /** Number of chunks already merged into _cachedMergedArgs. */
+  _mergedUpTo: number;
 }
 
 export interface ReconstructedToolCall {

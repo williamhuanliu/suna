@@ -126,7 +126,7 @@ export const getSandboxFileContent = async (
     const normalizedPath = normalizePathWithUnicode(path);
     const response = await backendApi.get<string | Blob>(
       `/sandboxes/${sandboxId}/files/content?path=${encodeURIComponent(normalizedPath)}`,
-      { showErrors: true, timeout: 120000 } // 120s for large files / cold sandbox (Daytona can be slow)
+      { showErrors: true, timeout: 180000 } // 3 min: large files, cold sandbox startup, Daytona latency
     );
 
     if (response.error) {

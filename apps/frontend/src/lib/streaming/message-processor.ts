@@ -358,20 +358,58 @@ function extractReasoningContent(
   return null;
 }
 
+/**
+ * Maximum argument chars to include in the serialized metadata.
+ * Arguments beyond this limit are truncated to keep JSON.stringify fast.
+ * Full arguments are still available via rawArguments on each tool call.
+ */
+const MAX_SERIALIZED_ARG_CHARS = 6000;
+
+/**
+ * Create a lightweight copy of tool calls suitable for JSON serialization.
+ * Truncates huge `arguments` / `rawArguments` strings so that
+ * JSON.stringify runs in bounded time instead of O(80k+).
+ */
+function lightweightToolCalls(toolCalls: ReconstructedToolCall[]): ReconstructedToolCall[] {
+  let needsCopy = false;
+  for (const tc of toolCalls) {
+    if (tc.arguments.length > MAX_SERIALIZED_ARG_CHARS) { needsCopy = true; break; }
+  }
+  if (!needsCopy) return toolCalls;
+
+  return toolCalls.map(tc => {
+    if (tc.arguments.length <= MAX_SERIALIZED_ARG_CHARS) return tc;
+    // Take HEAD to preserve the JSON structure opening ({"file_path":"...",
+    // "file_contents":"...) for regex extraction fallback.
+    // _totalArgsLength changes with each chunk, ensuring the serialized
+    // metadata string is different on each update (so React detects changes).
+    const truncated = tc.arguments.slice(0, MAX_SERIALIZED_ARG_CHARS);
+    return {
+      ...tc,
+      arguments: truncated,
+      rawArguments: truncated,
+      _totalArgsLength: tc.arguments.length,
+    } as ReconstructedToolCall & { _totalArgsLength: number };
+  });
+}
+
 export function createMessageWithToolCalls(
   originalMessage: StreamMessage,
   reconstructedToolCalls: ReconstructedToolCall[]
 ): UnifiedMessage {
   const parsedMetadata = safeJsonParse<ParsedMetadata>(originalMessage.metadata || '', {});
+
+  // Truncate huge arguments before serialization to prevent main-thread freeze.
+  const lightToolCalls = lightweightToolCalls(reconstructedToolCalls);
   
-  return {
+  const message: UnifiedMessage & { _fullToolCalls?: ReconstructedToolCall[] } = {
     message_id: originalMessage.message_id || '',
     thread_id: originalMessage.thread_id || '',
     type: originalMessage.type as UnifiedMessage['type'],
     content: originalMessage.content || '',
     metadata: JSON.stringify({
       ...parsedMetadata,
-      tool_calls: reconstructedToolCalls,
+      tool_calls: lightToolCalls,
     }),
     sequence: originalMessage.sequence,
     created_at: originalMessage.created_at || new Date().toISOString(),
@@ -380,6 +418,14 @@ export function createMessageWithToolCalls(
     agent_id: originalMessage.agent_id,
     agents: originalMessage.agents?.name ? { name: originalMessage.agents.name } : undefined,
   };
+
+  // Attach the FULL (non-truncated) tool calls as a direct JS reference.
+  // This is never JSON.stringify'd — consumers that need full arguments
+  // (e.g. FileOperationToolView for streaming display) read from here
+  // instead of parsing the truncated metadata.
+  message._fullToolCalls = reconstructedToolCalls;
+
+  return message;
 }
 
 export function streamMessageToUnifiedMessage(message: StreamMessage): UnifiedMessage {
