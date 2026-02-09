@@ -1034,10 +1034,31 @@ const AssistantGroupRow = memo(function AssistantGroupRow({
           {visibleToolCalls.length > 0 ? (
             visibleToolCalls.map((tc: any, tcIndex: number) => {
               const toolName = tc.function_name?.replace(/_/g, "-") || "";
+
+              // Lightweight content for ShowToolStream — truncate huge file_contents / code_edit
+              // to avoid serializing 50k+ chars every render (the main cause of page freeze).
+              const PREVIEW_LIMIT = 5000;
+              let lightArgs = tc.arguments || {};
+              if (typeof lightArgs === 'object' && lightArgs !== null) {
+                const fc = lightArgs.file_contents;
+                const ce = lightArgs.code_edit;
+                if ((typeof fc === 'string' && fc.length > PREVIEW_LIMIT) ||
+                    (typeof ce === 'string' && ce.length > PREVIEW_LIMIT)) {
+                  lightArgs = { ...lightArgs };
+                  if (typeof fc === 'string' && fc.length > PREVIEW_LIMIT) {
+                    lightArgs.file_contents = fc.slice(-PREVIEW_LIMIT);
+                    lightArgs._total_chars = fc.length;
+                  }
+                  if (typeof ce === 'string' && ce.length > PREVIEW_LIMIT) {
+                    lightArgs.code_edit = ce.slice(-PREVIEW_LIMIT);
+                    lightArgs._total_chars = ce.length;
+                  }
+                }
+              }
               const toolCallContent = JSON.stringify({
                 function: { name: toolName },
                 tool_name: toolName,
-                arguments: tc.arguments || {},
+                arguments: lightArgs,
               });
 
               return (

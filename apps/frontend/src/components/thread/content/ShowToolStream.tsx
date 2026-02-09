@@ -83,6 +83,30 @@ function extractFileContentsFromPartialJson(jsonString: string): string | null {
            extractFieldFromPartialJson(jsonString, 'content');
 }
 
+/** Max chars to render in stream preview for file/code content. Prevents page freeze on large create_file. */
+const MAX_STREAM_PREVIEW_CHARS = 4000;
+
+/**
+ * Truncate for stream preview: keeps DOM small to avoid freeze.
+ * When showTail is true (streaming), show the LAST N chars so user sees content "flowing" as it arrives.
+ * When showTail is false, show the first N chars (for completed or one-off display).
+ */
+function truncateForStreamPreview(value: string, showTail = false): string {
+    if (!value || value.length <= MAX_STREAM_PREVIEW_CHARS) return value;
+    const total = value.length;
+    const rest = (total - MAX_STREAM_PREVIEW_CHARS).toLocaleString();
+    if (showTail) {
+        const tail = value.slice(-MAX_STREAM_PREVIEW_CHARS);
+        return `（仅显示最后 ${MAX_STREAM_PREVIEW_CHARS.toLocaleString()} 字，共 ${total.toLocaleString()} 字）\n\n${tail}`;
+    }
+    return value.slice(0, MAX_STREAM_PREVIEW_CHARS) + `\n\n... (${rest} more characters)`;
+}
+
+/** When content is oversized, append this so user sees stream is still progressing (avoids "looks stuck" concern). */
+function streamingProgressSuffix(charsReceived: number): string {
+    return `\n\n⟳ 正在接收… 已收到 ${charsReceived.toLocaleString()} 字符`;
+}
+
 // Media generation tools that show shimmer preview
 const MEDIA_GENERATION_TOOLS = new Set([
     'image-edit-or-generate',
@@ -588,30 +612,37 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
     const streamingContent = useMemo(() => {
         if (!throttledContent) return { html: '', plainText: '' };
 
+        // Avoid parsing huge payloads (e.g. create_file with 80k chars) to prevent main-thread freeze
+        const MAX_PARSE_CHARS = 60_000;
+        const isOversized = throttledContent.length > MAX_PARSE_CHARS;
+
         try {
-            // Try to parse as JSON first
+            if (isOversized) throw new Error('Content too long to parse');
             const parsed = JSON.parse(throttledContent);
             
-            // For file operations, extract file_contents or code_edit
+            // For file operations, extract file_contents or code_edit (truncate to avoid page freeze)
             if (STREAMABLE_TOOLS.FILE_OPERATIONS.has(toolName || '')) {
                 if (isEditFile && parsed.code_edit) {
-                    // Use smooth value if available and animating
                     const value = isFieldAnimating ? smoothFieldValue : parsed.code_edit;
-                    return { html: value, plainText: value };
+                    const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                    return { html: display, plainText: display };
                 }
                 if ((isCreateFile || isFullFileRewrite) && parsed.file_contents) {
                     const value = isFieldAnimating ? smoothFieldValue : parsed.file_contents;
-                    return { html: value, plainText: value };
+                    const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                    return { html: display, plainText: display };
                 }
                 if (parsed.arguments) {
                     const args = typeof parsed.arguments === 'string' ? JSON.parse(parsed.arguments) : parsed.arguments;
                     if (isEditFile && args.code_edit) {
                         const value = isFieldAnimating ? smoothFieldValue : args.code_edit;
-                        return { html: value, plainText: value };
+                        const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                        return { html: display, plainText: display };
                     }
                     if ((isCreateFile || isFullFileRewrite) && args.file_contents) {
                         const value = isFieldAnimating ? smoothFieldValue : args.file_contents;
-                        return { html: value, plainText: value };
+                        const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                        return { html: display, plainText: display };
                     }
                 }
             }
@@ -653,15 +684,16 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
                 }
             }
 
-            // Fallback: try to extract meaningful content from any tool
-            // First check for common content fields
+            // Fallback: try to extract meaningful content from any tool (truncate file/code to avoid freeze)
             if (parsed.file_contents) {
                 const value = isFieldAnimating ? smoothFieldValue : parsed.file_contents;
-                return { html: value, plainText: value };
+                const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                return { html: display, plainText: display };
             }
             if (parsed.code_edit) {
                 const value = isFieldAnimating ? smoothFieldValue : parsed.code_edit;
-                return { html: value, plainText: value };
+                const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                return { html: display, plainText: display };
             }
             if (parsed.content) {
                 return { html: parsed.content, plainText: parsed.content };
@@ -680,11 +712,13 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
                 if (args) {
                     if (args.file_contents) {
                         const value = isFieldAnimating ? smoothFieldValue : args.file_contents;
-                        return { html: value, plainText: value };
+                        const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                        return { html: display, plainText: display };
                     }
                     if (args.code_edit) {
                         const value = isFieldAnimating ? smoothFieldValue : args.code_edit;
-                        return { html: value, plainText: value };
+                        const display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), isFieldAnimating);
+                        return { html: display, plainText: display };
                     }
                     if (args.content) {
                         return { html: args.content, plainText: args.content };
@@ -710,12 +744,22 @@ export const ShowToolStream: React.FC<ShowToolStreamProps> = ({
             // JSON parse failed - this is streaming/partial JSON
             // Use optimistic parsing to extract fields from incomplete JSON
             
-            // Try to extract file contents from partial JSON (for file operations)
-            const partialFileContents = extractFileContentsFromPartialJson(throttledContent);
+            // Try to extract file contents from partial JSON (for file operations, truncate to avoid freeze)
+            const contentForPartial = throttledContent.length > MAX_PARSE_CHARS
+                ? throttledContent.slice(0, MAX_PARSE_CHARS)
+                : throttledContent;
+            const partialFileContents = extractFileContentsFromPartialJson(contentForPartial);
             if (partialFileContents) {
-                // Use smooth animation value if animating, otherwise use extracted content
                 const value = isFieldAnimating && smoothFieldValue ? smoothFieldValue : partialFileContents;
-                return { html: value, plainText: value };
+                let display = truncateForStreamPreview(typeof value === 'string' ? value : String(value), true);
+                if (throttledContent.length > MAX_PARSE_CHARS) {
+                    display += streamingProgressSuffix(throttledContent.length);
+                }
+                return { html: display, plainText: display };
+            }
+            if (throttledContent.length > MAX_PARSE_CHARS) {
+                const msg = '内容较长，仅显示部分预览。' + streamingProgressSuffix(throttledContent.length);
+                return { html: msg, plainText: msg };
             }
             
             // Try to extract command from partial JSON
